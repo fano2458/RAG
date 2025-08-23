@@ -77,12 +77,19 @@ class CustomEmbeddings(Embeddings):
         else:
             raise ValueError("Input must be a string or list of strings")
 
-if "embeddings_model" not in st.session_state:
+@st.cache_resource
+def load_embeddings_model():
+    """Load and cache the embeddings model globally"""
     model = SentenceTransformer('intfloat/multilingual-e5-large-instruct')
-    st.session_state.embeddings_model = CustomEmbeddings(model)
+    return CustomEmbeddings(model)
 
-if "reranker_model" not in st.session_state:
-    st.session_state.reranker_model = CrossEncoder('cross-encoder/mmarco-mMiniLMv2-L12-H384-v1')
+@st.cache_resource
+def load_reranker_model():
+    """Load and cache the reranker model globally"""
+    return CrossEncoder('cross-encoder/mmarco-mMiniLMv2-L12-H384-v1')
+
+embeddings_model = load_embeddings_model()
+reranker_model = load_reranker_model()
 
 if "vectors" not in st.session_state:
     st.session_state.vectors = None
@@ -116,7 +123,7 @@ def vector_embedding(uploaded_file=None):
         try:
             existing_vectors = FAISS.load_local(
                 "faiss_db", 
-                st.session_state.embeddings_model,
+                embeddings_model,
                 allow_dangerous_deserialization=True
             )
         except Exception as e:
@@ -154,7 +161,7 @@ def vector_embedding(uploaded_file=None):
         
         new_vectors = FAISS.from_documents(
             new_documents,
-            st.session_state.embeddings_model
+            embeddings_model
         )
         
         if existing_vectors:
@@ -176,7 +183,7 @@ def load_existing_vectors():
         try:
             st.session_state.vectors = FAISS.load_local(
                 "faiss_db", 
-                st.session_state.embeddings_model,
+                embeddings_model,
                 allow_dangerous_deserialization=True
             )
             return True
@@ -192,7 +199,7 @@ def rerank_documents(query, documents, top_k=5):
     
     pairs = [(query, doc.page_content) for doc in documents]
     
-    scores = st.session_state.reranker_model.predict(pairs)
+    scores = reranker_model.predict(pairs)
     
     scored_docs = list(zip(documents, scores))
     scored_docs.sort(key=lambda x: x[1], reverse=True)
